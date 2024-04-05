@@ -27,7 +27,7 @@ contract Vesting is Ownable {
   event InitializeVesting(uint timeStamp);
   event ClaimTokens(address from, uint amount, uint count);
 
-  constructor(address currency_, uint8 maxClaims_) Ownable(msg.sender){
+  constructor(address currency_, uint8 maxClaims_, address newOwner) Ownable(newOwner){
     require(currency_ != address(0), "Must be a token address");
     currency = IERC20(currency_);
     maxClaims = maxClaims_;
