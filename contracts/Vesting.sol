@@ -34,7 +34,7 @@ contract Vesting is Ownable {
   }
 
   modifier beforeVestingStart() {
-    require(!stateVesting, "Only when the Vesting dont start"); 
+    require(!stateVesting, "Only when Vesting was not initialized"); 
     _;
   }
 
@@ -47,12 +47,12 @@ contract Vesting is Ownable {
   function resgisterVesting(address[] memory accounts, uint[] memory amounts) public  onlyOwner beforeVestingStart(){
     
     uint length = accounts.length;
-    require(length == amounts.length);
+    require(length == amounts.length, "lenght no match");
 
     uint totalCurrency_;
 
     for(uint i; i <length;){
-      require(accounts[i] != address(0));
+      require(accounts[i] != address(0), "address 0");
 
       totalCurrency_ +=amounts[i];
       totalAmounts[accounts[i]] += amounts[i];
