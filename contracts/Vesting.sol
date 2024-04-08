@@ -94,7 +94,7 @@ contract Vesting is Ownable {
     uint currentClaim = totalClaims[user]++; 
     require(amount > 0);
     require(block.timestamp >= startVesting + interval * ( currentClaim + 1), "Error: next claim instance not available yet");
-    require(currentClaim < maxClaims);
+    require(currentClaim < maxClaims, "all tokens claimed");
     uint totalAmount = amount/maxClaims;
 
     currency.transfer(user, totalAmount);

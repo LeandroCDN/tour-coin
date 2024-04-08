@@ -40,15 +40,16 @@ describe("Vesting", function () {
 
   async function fundContractAndInitializeFixture(){
     const { tourCoin, vesting, otherAccount } = await loadFixture(deployVestingFixture);
-    const { userA, userB, userC, userD} = await loadFixture(deployUserFixture);
+    const { userA, userB, userC, userE, } = await loadFixture(deployUserFixture);
     const ONE_DAY_IN_SECONDS = ((await time.latest())) + 86400;
-    const ONE_MONTH_IN_SECONDS =((await time.latest())) + (86401 * 30);
+    const ONE_MONTH_IN_SECONDS = (86401 * 30);
+    const ONE_YEAR_IN_SECONDS =((await time.latest())) + (86401 * 360);
 
-    await vesting.resgisterVesting([userA.address,userB.address,userC.address, userD.address],amounts);
+    await vesting.resgisterVesting([userA.address,userB.address,userC.address, userE.address],amounts);
     const totalAmountTransfer = await vesting.totalCurrency();
     await tourCoin.transfer(vesting.target, totalAmountTransfer);
     expect(await vesting.initializeVesting()).not.be.reverted;
-    return {vesting, tourCoin, otherAccount, ONE_DAY_IN_SECONDS, ONE_MONTH_IN_SECONDS ,userA, userB, userC, userD};
+    return {vesting, tourCoin, otherAccount, ONE_DAY_IN_SECONDS, ONE_MONTH_IN_SECONDS ,userA, userB, userC, userE};
   }
 
   describe("Deployment", function () {
@@ -113,6 +114,7 @@ describe("Vesting", function () {
       expect(await vesting.totalAmounts(userC.address)).to.equal(amounts[2]);
     });
   });
+
   describe("Owner functions", function (){
     it("removeAccounts", async function(){
       const { vesting} = await loadFixture(deployVestingFixture); 
@@ -150,7 +152,8 @@ describe("Vesting", function () {
       );
     });
   });
-  // describe("claimTokens", function (){
+
+  describe("claimTokens", function (){
     it("should revert when claim before timeintervals", async function(){
       const {vesting, otherAccount} = await loadFixture(fundContractAndInitializeFixture);
       await expect( vesting.connect(otherAccount).claimTokens()).to.be.revertedWith(
@@ -159,27 +162,45 @@ describe("Vesting", function () {
     });
 
     it("Claim after intervals", async function(){
-      const {vesting, tourCoin, ONE_MONTH_IN_SECONDS,userA} = await loadFixture(fundContractAndInitializeFixture);
+      const {vesting, tourCoin, ONE_MONTH_IN_SECONDS, userE} = await loadFixture(fundContractAndInitializeFixture);
+      expect(await tourCoin.balanceOf(userE)).to.equal(0)
       
-      await time.increaseTo(ONE_MONTH_IN_SECONDS);
-      expect(await vesting.connect(userA).claimTokens()).not.be.reverted;
-      // test token transfers
-      // test simultaneous claims over time
+      for (let i = 0; i < 12; i++){
+        await time.increase(ONE_MONTH_IN_SECONDS);
+        expect(await vesting.connect(userE).claimTokens()).not.be.reverted;
+      }
+      expect(await tourCoin.balanceOf(userE)).to.equal("399999999999999999996"); //amounts[3] - 4 wei
+      
+      await time.increase(ONE_MONTH_IN_SECONDS);
+      await expect( vesting.connect(userE).claimTokens()).to.be.revertedWith(
+        'all tokens claimed'
+      );
     }); 
 
     it("claim all months in time", async function(){
-
+      const {vesting, tourCoin, ONE_MONTH_IN_SECONDS, userE} = await loadFixture(fundContractAndInitializeFixture);
+      expect(await tourCoin.balanceOf(userE)).to.equal(0)
+      await time.increase(ONE_MONTH_IN_SECONDS * 12);
+      
+      for (let i = 0; i < 12; i++){
+        expect(await vesting.connect(userE).claimTokens()).not.be.reverted;
+      }
+      expect(await tourCoin.balanceOf(userE)).to.equal("399999999999999999996"); //amounts[3] - 4 wei
+      
     });
-  //   it("claim several months in time", async function(){
 
-  //   });
-  //   it("claim all months after", async function(){
-
-  //   });
-  //   it("claim maxClaims and more after/before", async function(){
-
-  //   });
-  // });
+    it("claim all months after", async function(){
+      const {vesting, tourCoin, ONE_MONTH_IN_SECONDS, userE} = await loadFixture(fundContractAndInitializeFixture);
+      expect(await tourCoin.balanceOf(userE)).to.equal(0)
+      await time.increase(ONE_MONTH_IN_SECONDS * 24);
+      
+      for (let i = 0; i < 12; i++){
+        expect(await vesting.connect(userE).claimTokens()).not.be.reverted;
+      }
+      expect(await tourCoin.balanceOf(userE)).to.equal("399999999999999999996"); //amounts[3] - 4 wei
+      
+    });
+  });
 
   // describe("Events", function () {
   //   it("Should emit an event on ResgisterVesting", async function () {})
