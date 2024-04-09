@@ -5,122 +5,176 @@ const {
 const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 const { expect } = require("chai");
 
-// describe("Lock", function () {
-//   // We define a fixture to reuse the same setup in every test.
-//   // We use loadFixture to run this setup once, snapshot that state,
-//   // and reset Hardhat Network to that snapshot in every test.
-//   async function deployOneYearLockFixture() {
-//     const ONE_YEAR_IN_SECS = 365 * 24 * 60 * 60;
-//     const ONE_GWEI = 1_000_000_000;
+describe("Lock", function () {
+  // We define a fixture to reuse the same setup in every test.
+  // We use loadFixture to run this setup once, snapshot that state,
+  // and reset Hardhat Network to that snapshot in every test.
+  async function deployLockFixture() {
+    const [owner, otherAccount] = await ethers.getSigners();
+    //1: deploy lpMock
+    const LpMock = await ethers.getContractFactory("LP");
+    const lpMock = await LpMock.deploy();
 
-//     const lockedAmount = ONE_GWEI;
-//     const unlockTime = (await time.latest()) + ONE_YEAR_IN_SECS;
+    //2: deploy LpLock with lpMock.tarjet
+    const Lock = await ethers.getContractFactory("Lock");
+    const lock = await Lock.deploy(lpMock.target);
 
-//     // Contracts are deployed using the first signer/account by default
-//     const [owner, otherAccount] = await ethers.getSigners();
+    //3: send 1 lpMock to otherAccount
+    await lpMock.safeMint(otherAccount.address);
+    expect(await lpMock.balanceOf(otherAccount.address)).to.equal(1);
 
-//     const Lock = await ethers.getContractFactory("Lock");
-//     const lock = await Lock.deploy(unlockTime, { value: lockedAmount });
+    const ONE_YEAR_IN_SECS = 365 * 24 * 60 * 60;
+    const EPOC = ((await time.latest()));
+    
+    return { lpMock, lock, owner, otherAccount, ONE_YEAR_IN_SECS,EPOC };
+  }
 
-//     return { lock, unlockTime, lockedAmount, owner, otherAccount };
-//   }
+  describe("Deployment", function () {
+    it("Should set the right lpLockAddress", async function () {
+      const {lpMock, lock} = await loadFixture(deployLockFixture);
+      expect(await lock.lpLockAddress()).to.equal(lpMock.target);
+    });
+    
+    it("Should set the right owner", async function () {
+      const {lock, owner} = await loadFixture(deployLockFixture);
+      expect(await lock.owner()).to.equal(owner.address);
+    });
 
-//   describe("Deployment", function () {
-//     it("Should set the right unlockTime", async function () {
-//       const { lock, unlockTime } = await loadFixture(deployOneYearLockFixture);
+    it("Lp balance should be zero", async function () {
+      const {lpMock, lock} = await loadFixture(deployLockFixture);
+      expect(await lpMock.balanceOf(lock.target)).to.equal(0);
+    });
+  });
+  describe("Deposits", function(){
+    describe("Validations", function(){
+      it("Should REVERT with the right error if called with wrong time", async function () {
+        const {lock} = await loadFixture(deployLockFixture);
+        await expect( lock.lockLp(0,0)).to.be.revertedWith(
+          "Unlock time should be in the future"
+        );
+      });
 
-//       expect(await lock.unlockTime()).to.equal(unlockTime);
-//     });
+      it("Should REVERT if called with wrong address", async function () {
+        const {lock, otherAccount} = await loadFixture(deployLockFixture);
+        await expect( lock.lockLp(0,0)).to.be.reverted;
+      });
 
-//     it("Should set the right owner", async function () {
-//       const { lock, owner } = await loadFixture(deployOneYearLockFixture);
+      it("Should REVERT  if caller dont have the id  ", async function () {
+        const {lock, otherAccount, EPOC} = await loadFixture(deployLockFixture);
+        await expect( lock.lockLp(EPOC+100,0)).to.be.reverted;
+      });
+      it("Shouldn't REVERT with the right params ", async function () {
+        const {lock, lpMock, owner ,EPOC} = await loadFixture(deployLockFixture);
+        await lpMock.safeMint(owner.address);
+        expect(await lpMock.balanceOf(owner.address)).to.equal(1);
+        await lpMock.approve(lock.target,1);
+         
+        expect(await lock.lockLp(EPOC+100,1)).not.be.reverted;
+        expect(await lpMock.balanceOf(lock.target)).to.equal(1);
+        expect(await lpMock.balanceOf(owner.address)).to.equal(0);
+      });
+      it("Should REVERT with the right error if deposit call two times", async function () {
+        const {lock, lpMock, owner ,EPOC} = await loadFixture(deployLockFixture);
+        await lpMock.safeMint(owner.address);
+        expect(await lpMock.balanceOf(owner.address)).to.equal(1);
+        await lpMock.approve(lock.target,1);
+         
+        expect(await lock.lockLp(EPOC+100,1)).not.be.reverted;
+        expect(await lpMock.balanceOf(lock.target)).to.equal(1);
+        expect(await lpMock.balanceOf(owner.address)).to.equal(0);
+        await expect( lock.lockLp(EPOC+200,0)).to.be.revertedWith(
+          "anhoterLock is working"
+        );
+      });
+    });
+    describe("Events", function(){
+      it("Should emit an event on deposits", async function () {
+        const {lock, lpMock, owner ,EPOC} = await loadFixture(deployLockFixture);
+        await lpMock.safeMint(owner.address);
+        expect(await lpMock.balanceOf(owner.address)).to.equal(1);
+        await lpMock.approve(lock.target,1);
 
-//       expect(await lock.owner()).to.equal(owner.address);
-//     });
+        await expect(lock.lockLp(100,1))
+          .to.emit(lock, "LockLp")
+          .withArgs(1, anyValue, await time.latest()+101
+        ); // We accept any value as `when` arg
+         
+        expect(await lpMock.balanceOf(lock.target)).to.equal(1);
+        expect(await lpMock.balanceOf(owner.address)).to.equal(0);
+      });
+    });
+    
+  })
 
-//     it("Should receive and store the funds to lock", async function () {
-//       const { lock, lockedAmount } = await loadFixture(
-//         deployOneYearLockFixture
-//       );
+  describe("Withdrawals", function () {
+    describe("Validations", function () {
+      it("Should revert with the right error if called too soon", async function () {
+        const {lock, lpMock, owner ,EPOC} = await loadFixture(deployLockFixture);
+        await lpMock.safeMint(owner.address);
+        expect(await lpMock.balanceOf(owner.address)).to.equal(1);
+        await lpMock.approve(lock.target,1);
+        expect(await lock.lockLp(EPOC+100,1)).not.be.reverted;
 
-//       expect(await ethers.provider.getBalance(lock.target)).to.equal(
-//         lockedAmount
-//       );
-//     });
+        await expect( lock.withdraw()).to.be.revertedWith(
+          "You can't withdraw yet"
+        );
+      });
 
-//     it("Should fail if the unlockTime is not in the future", async function () {
-//       // We don't use the fixture here because we want a different deployment
-//       const latestTime = await time.latest();
-//       const Lock = await ethers.getContractFactory("Lock");
-//       await expect(Lock.deploy(latestTime, { value: 1 })).to.be.revertedWith(
-//         "Unlock time should be in the future"
-//       );
-//     });
-//   });
+      it("Should revert if called from another account", async function () {
+        const {lock, lpMock, owner ,EPOC, otherAccount} = await loadFixture(deployLockFixture);
+        await lpMock.safeMint(owner.address);
+        expect(await lpMock.balanceOf(owner.address)).to.equal(1);
+        await lpMock.approve(lock.target,1);
+        expect(await lock.lockLp(EPOC+100,1)).not.be.reverted;
+        await time.increase(EPOC+200);
+        await expect( lock.connect(otherAccount).withdraw()).to.be.reverted;
+      });
 
-//   describe("Withdrawals", function () {
-//     describe("Validations", function () {
-//       it("Should revert with the right error if called too soon", async function () {
-//         const { lock } = await loadFixture(deployOneYearLockFixture);
+      it("Shouldn't fail if the unlockTime has arrived and the owner calls it", async function () {
+        const {lock, lpMock, owner ,EPOC, otherAccount} = await loadFixture(deployLockFixture);
+        await lpMock.safeMint(owner.address);
+        expect(await lpMock.balanceOf(owner.address)).to.equal(1);
+        await lpMock.approve(lock.target,1);
+        await expect( lock.lockLp(EPOC+100,1)).not.be.reverted;
+        await time.increase(EPOC+200);
+        expect(await lock.withdraw()).not.be.reverted;
+        expect(await lpMock.balanceOf(lock.target)).to.equal(0);
+        expect(await lpMock.balanceOf(owner.address)).to.equal(1);
 
-//         await expect(lock.withdraw()).to.be.revertedWith(
-//           "You can't withdraw yet"
-//         );
-//       });
+      });
+    });
 
-//       it("Should revert with the right error if called from another account", async function () {
-//         const { lock, unlockTime, otherAccount } = await loadFixture(
-//           deployOneYearLockFixture
-//         );
+    describe("Events", function () {
+      it("Should emit an event on withdraws", async function () {
+        const {lock, lpMock, owner ,EPOC, otherAccount} = await loadFixture(deployLockFixture);
+        await lpMock.safeMint(owner.address);
+        expect(await lpMock.balanceOf(owner.address)).to.equal(1);
+        await lpMock.approve(lock.target,1);
+        expect(await lock.lockLp(EPOC+100,1)).not.be.reverted;
+        await time.increase(EPOC+200);
+        // await expect( lock.withdraw()).not.be.reverted;
+        await expect(lock.withdraw())
+          .to.emit(lock, "Withdrawal")
+          .withArgs(1, anyValue,
+        );
+        expect(await lpMock.balanceOf(lock.target)).to.equal(0);
+        expect(await lpMock.balanceOf(owner.address)).to.equal(1);
+      });
+    });
 
-//         // We can increase the time in Hardhat Network
-//         await time.increaseTo(unlockTime);
+    // describe("Transfers", function () {
+    //   it("Should transfer the funds to the owner", async function () {
+    //     const { lock, unlockTime, lockedAmount, owner } = await loadFixture(
+    //       deployOneYearLockFixture
+    //     );
 
-//         // We use lock.connect() to send a transaction from another account
-//         await expect(lock.connect(otherAccount).withdraw()).to.be.revertedWith(
-//           "You aren't the owner"
-//         );
-//       });
+    //     await time.increaseTo(unlockTime);
 
-//       it("Shouldn't fail if the unlockTime has arrived and the owner calls it", async function () {
-//         const { lock, unlockTime } = await loadFixture(
-//           deployOneYearLockFixture
-//         );
-
-//         // Transactions are sent using the first signer by default
-//         await time.increaseTo(unlockTime);
-
-//         await expect(lock.withdraw()).not.to.be.reverted;
-//       });
-//     });
-
-//     describe("Events", function () {
-//       it("Should emit an event on withdrawals", async function () {
-//         const { lock, unlockTime, lockedAmount } = await loadFixture(
-//           deployOneYearLockFixture
-//         );
-
-//         await time.increaseTo(unlockTime);
-
-//         await expect(lock.withdraw())
-//           .to.emit(lock, "Withdrawal")
-//           .withArgs(lockedAmount, anyValue); // We accept any value as `when` arg
-//       });
-//     });
-
-//     describe("Transfers", function () {
-//       it("Should transfer the funds to the owner", async function () {
-//         const { lock, unlockTime, lockedAmount, owner } = await loadFixture(
-//           deployOneYearLockFixture
-//         );
-
-//         await time.increaseTo(unlockTime);
-
-//         await expect(lock.withdraw()).to.changeEtherBalances(
-//           [owner, lock],
-//           [lockedAmount, -lockedAmount]
-//         );
-//       });
-//     });
-//   });
-// });
+    //     await expect(lock.withdraw()).to.changeEtherBalances(
+    //       [owner, lock],
+    //       [lockedAmount, -lockedAmount]
+    //     );
+    //   });
+    // });
+  });
+});

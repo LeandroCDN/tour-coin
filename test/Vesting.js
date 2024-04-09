@@ -39,7 +39,7 @@ describe("Vesting", function () {
   }
 
   async function fundContractAndInitializeFixture(){
-    const { tourCoin, vesting, otherAccount } = await loadFixture(deployVestingFixture);
+    const { tourCoin, vesting, otherAccount,  } = await loadFixture(deployVestingFixture);
     const { userA, userB, userC, userE, } = await loadFixture(deployUserFixture);
     const ONE_DAY_IN_SECONDS = ((await time.latest())) + 86400;
     const ONE_MONTH_IN_SECONDS = (86401 * 30);
@@ -173,7 +173,7 @@ describe("Vesting", function () {
       
       await time.increase(ONE_MONTH_IN_SECONDS);
       await expect( vesting.connect(userE).claimTokens()).to.be.revertedWith(
-        'all tokens claimed'
+        'All tokens claimed'
       );
     }); 
 
@@ -190,10 +190,11 @@ describe("Vesting", function () {
     });
 
     it("claim all months after", async function(){
-      const {vesting, tourCoin, ONE_MONTH_IN_SECONDS, userE} = await loadFixture(fundContractAndInitializeFixture);
+      const {vesting, tourCoin, ONE_MONTH_IN_SECONDS, userB ,userE, otherAccount} = await loadFixture(fundContractAndInitializeFixture);
       expect(await tourCoin.balanceOf(userE)).to.equal(0)
       await time.increase(ONE_MONTH_IN_SECONDS * 24);
-      
+      console.log(await otherAccount.address);
+      console.log(await userB.address);
       for (let i = 0; i < 12; i++){
         expect(await vesting.connect(userE).claimTokens()).not.be.reverted;
       }

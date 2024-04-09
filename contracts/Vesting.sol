@@ -87,6 +87,7 @@ contract Vesting is Ownable {
     emit InitializeVesting(startVesting);
   }
 
+  //Todo totalCurrency dont change?
   function claimTokens() external {
     require(stateVesting, "Vesting not started yet");
     address user = msg.sender;
@@ -94,7 +95,7 @@ contract Vesting is Ownable {
     uint currentClaim = totalClaims[user]++; 
     require(amount > 0);
     require(block.timestamp >= startVesting + interval * ( currentClaim + 1), "Error: next claim instance not available yet");
-    require(currentClaim < maxClaims, "all tokens claimed");
+    require(currentClaim < maxClaims, "All tokens claimed");
     uint totalAmount = amount/maxClaims;
 
     currency.transfer(user, totalAmount);
