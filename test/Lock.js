@@ -134,8 +134,11 @@ describe("Lock", function () {
         const {lock, lpMock, owner ,EPOC, otherAccount} = await loadFixture(deployLockFixture);
         await lpMock.safeMint(owner.address);
         expect(await lpMock.balanceOf(owner.address)).to.equal(1);
+        expect(await lpMock.balanceOf(lock.target)).to.equal(0);
         await lpMock.approve(lock.target,1);
         await expect( lock.lockLp(EPOC+100,1)).not.be.reverted;
+        expect(await lpMock.balanceOf(lock.target)).to.equal(1);
+        expect(await lpMock.balanceOf(owner.address)).to.equal(0);
         await time.increase(EPOC+200);
         expect(await lock.withdraw()).not.be.reverted;
         expect(await lpMock.balanceOf(lock.target)).to.equal(0);
